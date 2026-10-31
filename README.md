@@ -71,6 +71,17 @@ Work in progress and planned:
 
 ---
 
+## Deployment
+
+The frontend, API and admin apps deploy to three separate Vercel projects. Each
+one has a manual GitHub Actions workflow, so releases are always an explicit
+choice rather than a side effect of a push.
+
+See [docs/deployment.md](docs/deployment.md) for the Vercel project settings,
+required repository secrets and the deploy steps.
+
+---
+
 ## Contributing
 
 Contributions are welcome — from bug reports and documentation fixes to new features and data corrections.

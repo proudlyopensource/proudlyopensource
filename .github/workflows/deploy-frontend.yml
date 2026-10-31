@@ -1,0 +1,69 @@
+name: Deploy Frontend
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-frontend-production
+  cancel-in-progress: false
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_FRONTEND }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  deploy:
+    name: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Check required secrets
+        run: |
+          missing=""
+          if [ -z "$VERCEL_TOKEN" ]; then missing="$missing VERCEL_TOKEN"; fi
+          if [ -z "$VERCEL_ORG_ID" ]; then missing="$missing VERCEL_ORG_ID"; fi
+          if [ -z "$VERCEL_PROJECT_ID" ]; then missing="$missing VERCEL_PROJECT_ID_FRONTEND"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required repository secret(s):$missing"
+            exit 1
+          fi
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@65.9.0
+
+      - name: Pull Vercel environment
+        working-directory: apps/frontend
+        run: vercel pull --yes --environment=production
+
+      - name: Build project
+        working-directory: apps/frontend
+        run: vercel build --prod --yes
+
+      - name: Deploy to production
+        id: deploy
+        working-directory: apps/frontend
+        run: |
+          vercel deploy --prebuilt --prod --json > "$RUNNER_TEMP/deployment.json"
+          deployment_url="$(jq -r '.productionUrl // .url' "$RUNNER_TEMP/deployment.json")"
+          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Frontend deployed"
+            echo ""
+            echo "- URL: $deployment_url"
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
