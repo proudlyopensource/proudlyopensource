@@ -1,0 +1,16 @@
+# Normalize text files to LF in the repository so Prettier (`endOfLine: lf`)
+# and CI behave identically on Windows, macOS and Linux.
+* text=auto eol=lf
+
+# Binary assets
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.otf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
