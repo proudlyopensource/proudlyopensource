@@ -1,0 +1,823 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "ts"
+  generatedFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  EDITOR
+  MODERATOR
+}
+
+enum AdminStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETED
+}
+
+enum CommentStatus {
+  PENDING
+  PUBLISHED
+  HIDDEN
+}
+
+enum PricingType {
+  FREE
+  FREEMIUM
+  PAID
+  OPEN_CORE
+  CONTACT_FOR_PRICING
+}
+
+enum SourceAvailability {
+  OPEN_SOURCE
+  SOURCE_AVAILABLE
+  PROPRIETARY
+}
+
+enum HostingType {
+  SELF_HOSTED
+  CLOUD
+  BOTH
+}
+
+enum ProductStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum ProductRelationType {
+  ALTERNATIVE_TO
+  SIMILAR_TO
+  BUILT_WITH
+  INTEGRATES_WITH
+  FORK_OF
+}
+
+enum SubmissionStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum SubmissionPaymentStatus {
+  NOT_REQUIRED
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
+  CANCELLED
+  FAILED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum BillingInterval {
+  ONE_TIME
+  MONTHLY
+  YEARLY
+}
+
+enum SponsorshipStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PAUSED
+}
+
+enum SponsorshipPlacement {
+  HOMEPAGE
+  CATEGORY
+  PRODUCT_PAGE
+  SIDEBAR
+  FOOTER
+}
+
+enum SponsorshipEventType {
+  IMPRESSION
+  CLICK
+}
+
+enum BlogStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ClaimStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  REVOKED
+}
+
+enum TrustLevel {
+  NEW
+  TRUSTED
+  FLAGGED
+}
+
+// ---------------------------------------------------------------------------
+// Staff
+// ---------------------------------------------------------------------------
+
+model Admin {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  // Store only a password hash. Never expose this field in API responses.
+  passwordHash String
+  name         String?
+  avatarUrl    String?
+  role         AdminRole   @default(ADMIN)
+  status       AdminStatus @default(ACTIVE)
+  lastLoginAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  reviewedSubmissions  Submission[]          @relation("SubmissionReviewer")
+  reviewedClaims       ProductClaim[]        @relation("ClaimReviewer")
+  blogPosts            Blog[]                @relation("BlogAuthor")
+  createdSponsors      Sponsor[]             @relation("SponsorCreatedBy")
+  sponsorshipCampaigns SponsorshipCampaign[] @relation("CampaignCreatedBy")
+  auditLogs            AuditLog[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String?
+  admin      Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String?
+  changes    Json?
+  ipHash     String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Public accounts
+// ---------------------------------------------------------------------------
+
+// Users sign in with GitHub only. There are intentionally no password fields.
+model User {
+  id             String     @id @default(cuid())
+  githubId       String     @unique
+  githubUsername String     @unique
+  email          String?    @unique
+  name           String?
+  avatarUrl      String?
+  bio            String?    @db.Text
+  location       String?
+  websiteUrl     String?
+  company        String?
+  status         UserStatus @default(ACTIVE)
+  trustLevel     TrustLevel @default(NEW)
+  lastLoginAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  products          Product[]          @relation("ProductOwner")
+  comments          Comment[]
+  upvotes           ProductUpvote[]
+  submissions       Submission[]
+  claims            ProductClaim[]
+  sessions          Session[]
+  sponsorshipEvents SponsorshipEvent[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Custom, revocable sessions. Only a SHA-256 hash of the raw cookie token is
+// stored; the raw token never touches the database.
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  userAgent  String?
+  // Hashed, never the raw IP address.
+  ipHash     String?
+  expiresAt  DateTime
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?    @db.Text
+  icon        String?
+  order       Int        @default(0)
+  parentId    String?
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Category[] @relation("CategoryHierarchy")
+  products    Product[]  @relation("ProductCategories")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  sponsorshipCampaigns SponsorshipCampaign[] @relation("CategorySponsorshipCampaigns")
+
+  @@index([parentId])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  products  Product[] @relation("ProductTags")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Technology {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?   @db.Text
+  icon        String?
+  websiteUrl  String?
+  products    Product[] @relation("ProductTechnologies")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Alternative {
+  id          String               @id @default(cuid())
+  name        String               @unique
+  slug        String               @unique
+  description String?              @db.Text
+  logo        String?
+  websiteUrl  String?
+  external    Boolean              @default(true)
+  products    ProductAlternative[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+model Product {
+  id                 String               @id @default(cuid())
+  name               String
+  slug               String               @unique
+  tagline            String               @db.VarChar(160)
+  about              String               @db.Text
+  description        String               @db.Text
+  logo               String?
+  coverImage         String?
+  websiteUrl         String
+  repoUrl            String?
+  repoProvider       String?
+  repositoryOwner    String?
+  repositoryName     String?
+  demoUrl            String?
+  license            String?
+  pricingType        PricingType          @default(FREE)
+  sourceAvailability SourceAvailability   @default(OPEN_SOURCE)
+  hostingType        HostingType          @default(SELF_HOSTED)
+  stars              Int?
+  forks              Int?
+  issues             Int?
+  lastCommitAt       DateTime?
+  statsUpdatedAt     DateTime?
+  status             ProductStatus        @default(PENDING)
+  featured           Boolean              @default(false)
+  isUpcoming         Boolean              @default(false)
+  releasedAt         DateTime?
+  ownerId            String?
+  owner              User?                @relation("ProductOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  verifiedOwner      Boolean              @default(false)
+  claimedAt          DateTime?
+  ownerDeletedAt     DateTime?
+  submitterEmail     String?
+  upvoteCount        Int                  @default(0)
+  categories         Category[]           @relation("ProductCategories")
+  tags               Tag[]                @relation("ProductTags")
+  technologies       Technology[]         @relation("ProductTechnologies")
+  alternatives       ProductAlternative[]
+  relatedFrom        ProductRelation[]    @relation("ProductRelationFrom")
+  relatedTo          ProductRelation[]    @relation("ProductRelationTo")
+  comments           Comment[]
+  upvotes            ProductUpvote[]
+  claims             ProductClaim[]
+  submissions        Submission[]         @relation("ProductSubmissions")
+  seoTitle           String?
+  seoDescription     String?              @db.VarChar(160)
+  ogImage            String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  publishedAt        DateTime?
+
+  sponsorshipCampaigns SponsorshipCampaign[] @relation("ProductSponsorshipCampaigns")
+
+  @@index([status, publishedAt])
+  @@index([featured, status])
+  @@index([isUpcoming])
+  @@index([pricingType])
+  @@index([sourceAvailability])
+  @@index([hostingType])
+  @@index([ownerId])
+  @@index([status, upvoteCount])
+}
+
+// A user's request to own/manage a listed product. Ownership is only granted
+// after review; `Product.verifiedOwner` reflects the resulting state.
+model ProductClaim {
+  id            String      @id @default(cuid())
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        ClaimStatus @default(PENDING)
+  // e.g. "github_repo_access", "email_domain", "manual"
+  method        String
+  // "owner/repo"
+  githubRepo    String?
+  // One of "admin", "write", "read", "none".
+  githubPerm    String?
+  // Permissions snapshot, email domain or admin note.
+  evidence      Json?
+  reviewedById  String?
+  reviewedBy    Admin?      @relation("ClaimReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  rejectionNote String?     @db.Text
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([productId, userId])
+  @@index([productId, status])
+  @@index([userId, status])
+  @@index([reviewedById])
+}
+
+model Comment {
+  id        String        @id @default(cuid())
+  productId String
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[]     @relation("CommentReplies")
+  content   String        @db.Text
+  status    CommentStatus @default(PUBLISHED)
+  editedAt  DateTime?
+  deletedAt DateTime?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([productId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([parentId])
+}
+
+model ProductUpvote {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])
+  @@index([productId])
+  @@index([userId, createdAt])
+}
+
+model ProductAlternative {
+  id            String      @id @default(cuid())
+  productId     String
+  alternativeId String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  alternative   Alternative @relation(fields: [alternativeId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([productId, alternativeId])
+  @@index([productId])
+  @@index([alternativeId])
+}
+
+model ProductRelation {
+  id            String              @id @default(cuid())
+  fromProductId String
+  toProductId   String
+  relationType  ProductRelationType
+  fromProduct   Product             @relation("ProductRelationFrom", fields: [fromProductId], references: [id], onDelete: Cascade)
+  toProduct     Product             @relation("ProductRelationTo", fields: [toProductId], references: [id], onDelete: Cascade)
+  createdAt     DateTime            @default(now())
+
+  @@unique([fromProductId, toProductId, relationType])
+  @@index([fromProductId])
+  @@index([toProductId])
+  @@index([relationType])
+}
+
+model Blog {
+  id             String     @id @default(cuid())
+  title          String
+  slug           String     @unique
+  excerpt        String     @db.Text
+  content        String     @db.Text
+  coverImage     String?
+  authorId       String?
+  author         Admin?     @relation("BlogAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  authorName     String?
+  authorEmail    String?
+  status         BlogStatus @default(DRAFT)
+  featured       Boolean    @default(false)
+  tags           String[]   @default([])
+  seoTitle       String?
+  seoDescription String?    @db.VarChar(160)
+  ogImage        String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  publishedAt    DateTime?
+
+  @@index([status, publishedAt])
+  @@index([featured, status])
+  @@index([authorId])
+}
+
+model Submission {
+  id                 String                  @id @default(cuid())
+  name               String
+  slug               String
+  tagline            String                  @db.VarChar(160)
+  about              String                  @db.Text
+  description        String                  @db.Text
+  websiteUrl         String
+  repoUrl            String?
+  repoProvider       String?
+  repositoryOwner    String?
+  repositoryName     String?
+  demoUrl            String?
+  license            String?
+  pricingType        PricingType             @default(FREE)
+  sourceAvailability SourceAvailability      @default(OPEN_SOURCE)
+  hostingType        HostingType             @default(SELF_HOSTED)
+  categoryIds        String[]
+  tagNames           String[]
+  technologyIds      String[]
+  alternativeIds     String[]
+  userId             String?
+  user               User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  productId          String?
+  product            Product?                @relation("ProductSubmissions", fields: [productId], references: [id], onDelete: SetNull)
+  submitterName      String?
+  submitterEmail     String
+  status             SubmissionStatus        @default(PENDING)
+  paymentStatus      SubmissionPaymentStatus @default(NOT_REQUIRED)
+  notes              String?                 @db.Text
+  rejectionReason    String?                 @db.Text
+  reviewedById       String?
+  reviewedBy         Admin?                  @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt         DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([submitterEmail])
+  @@index([userId])
+  @@index([productId])
+  @@index([reviewedById])
+}
+
+// ---------------------------------------------------------------------------
+// Commerce
+// ---------------------------------------------------------------------------
+
+model PaymentProvider {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id                   String                @id @default(cuid())
+  orderNumber          String                @unique
+  status               OrderStatus           @default(PENDING)
+  currency             String                @default("USD")
+  subtotalAmount       Int                   @default(0)
+  totalAmount          Int                   @default(0)
+  taxAmount            Int                   @default(0)
+  discountAmount       Int                   @default(0)
+  provider             String?
+  providerOrderId      String?
+  customerEmail        String?
+  customerName         String?
+  metadata             Json?
+  items                OrderItem[]
+  payments             Payment[]
+  sponsorshipCampaigns SponsorshipCampaign[]
+  sponsorSubscriptions SponsorSubscription[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@unique([provider, providerOrderId])
+  @@index([status])
+  @@index([customerEmail])
+}
+
+model OrderItem {
+  id               String   @id @default(cuid())
+  orderId          String
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  itemType         String
+  itemId           String?
+  name             String
+  description      String?  @db.Text
+  quantity         Int      @default(1)
+  unitPrice        Int
+  totalPrice       Int
+  currency         String   @default("USD")
+  benefitsSnapshot Json?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  @@index([orderId])
+  @@index([itemType, itemId])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  status            PaymentStatus @default(PENDING)
+  amount            Int
+  currency          String        @default("USD")
+  provider          String
+  providerPaymentId String?
+  providerEventId   String?
+  webhookEventId    String?
+  webhookEvent      WebhookEvent? @relation(fields: [webhookEventId], references: [id], onDelete: SetNull)
+  failureReason     String?       @db.Text
+  refundedAmount    Int           @default(0)
+  metadata          Json?
+  paidAt            DateTime?
+  refundedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@unique([provider, providerPaymentId])
+  @@index([orderId])
+  @@index([status])
+  @@index([providerEventId])
+  @@index([webhookEventId])
+}
+
+model WebhookEvent {
+  id               String    @id @default(cuid())
+  provider         String
+  providerEventId  String
+  eventType        String
+  payload          Json
+  processed        Boolean   @default(false)
+  processedAt      DateTime?
+  processingLockAt DateTime?
+  error            String?   @db.Text
+  payments         Payment[]
+  createdAt        DateTime  @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([processed])
+  @@index([eventType])
+  @@index([processingLockAt])
+}
+
+// ---------------------------------------------------------------------------
+// Sponsorships and advertising
+// ---------------------------------------------------------------------------
+
+model Sponsor {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  logo         String
+  websiteUrl   String
+  description  String?  @db.Text
+  contactName  String?
+  contactEmail String?
+  active       Boolean  @default(true)
+  createdById  String?
+  createdBy    Admin?   @relation("SponsorCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campaigns     SponsorshipCampaign[]
+  subscriptions SponsorSubscription[]
+
+  @@index([active])
+  @@index([createdById])
+}
+
+model SponsorPlan {
+  id               String                @id @default(cuid())
+  name             String                @unique
+  slug             String                @unique
+  price            Int                   @default(0)
+  currency         String                @default("USD")
+  billingInterval  BillingInterval       @default(ONE_TIME)
+  placement        SponsorshipPlacement?
+  description      String?               @db.Text
+  features         String[]              @default([])
+  benefitsSnapshot Json?
+  active           Boolean               @default(true)
+  order            Int                   @default(0)
+  provider         String?
+  providerId       String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  campaigns     SponsorshipCampaign[]
+  subscriptions SponsorSubscription[]
+
+  @@index([active])
+  @@index([placement])
+}
+
+model SponsorshipCampaign {
+  id               String               @id @default(cuid())
+  sponsorId        String
+  sponsor          Sponsor              @relation(fields: [sponsorId], references: [id], onDelete: Restrict)
+  planId           String?
+  plan             SponsorPlan?         @relation(fields: [planId], references: [id], onDelete: SetNull)
+  orderId          String?
+  order            Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdById      String?
+  createdBy        Admin?               @relation("CampaignCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  status           SponsorshipStatus    @default(DRAFT)
+  placement        SponsorshipPlacement @default(HOMEPAGE)
+  categoryId       String?
+  category         Category?            @relation("CategorySponsorshipCampaigns", fields: [categoryId], references: [id], onDelete: SetNull)
+  productId        String?
+  product          Product?             @relation("ProductSponsorshipCampaigns", fields: [productId], references: [id], onDelete: SetNull)
+  headline         String?
+  body             String?              @db.Text
+  imageUrl         String?
+  targetUrl        String?
+  ctaLabel         String?
+  priority         Int                  @default(0)
+  startDate        DateTime?
+  endDate          DateTime?
+  benefitsSnapshot Json?
+  priceSnapshot    Int?
+  currencySnapshot String               @default("USD")
+  impressions      Int                  @default(0)
+  clicks           Int                  @default(0)
+  metadata         Json?
+  events           SponsorshipEvent[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([sponsorId])
+  @@index([planId])
+  @@index([orderId])
+  @@index([createdById])
+  @@index([status])
+  @@index([placement])
+  @@index([categoryId])
+  @@index([productId])
+  @@index([startDate, endDate])
+  @@index([status, placement, startDate, endDate])
+  @@index([priority])
+}
+
+// Privacy-friendly ad analytics. Store a hashed IP at most, never the raw address.
+model SponsorshipEvent {
+  id         String               @id @default(cuid())
+  campaignId String
+  campaign   SponsorshipCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  type       SponsorshipEventType
+  userId     String?
+  user       User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId  String?
+  ipHash     String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime             @default(now())
+
+  @@index([campaignId, type, createdAt])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SponsorSubscription {
+  id                     String            @id @default(cuid())
+  sponsorId              String
+  sponsor                Sponsor           @relation(fields: [sponsorId], references: [id], onDelete: Restrict)
+  planId                 String?
+  plan                   SponsorPlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+  orderId                String?
+  order                  Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  status                 SponsorshipStatus @default(DRAFT)
+  billingInterval        BillingInterval   @default(MONTHLY)
+  provider               String?
+  providerSubscriptionId String?
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  canceledAt             DateTime?
+  renewsAt               DateTime?
+  priceSnapshot          Int?
+  currencySnapshot       String            @default("USD")
+  benefitsSnapshot       Json?
+  metadata               Json?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  @@unique([provider, providerSubscriptionId])
+  @@index([sponsorId])
+  @@index([planId])
+  @@index([orderId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+// ---------------------------------------------------------------------------
+// Community and growth
+// ---------------------------------------------------------------------------
+
+model Supporter {
+  id                String        @id @default(cuid())
+  name              String?
+  email             String?
+  amount            Int           @default(0)
+  currency          String        @default("USD")
+  anonymous         Boolean       @default(false)
+  message           String?       @db.Text
+  paymentStatus     PaymentStatus @default(PENDING)
+  provider          String?
+  providerPaymentId String?
+  providerEventId   String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@unique([provider, providerPaymentId])
+  @@index([paymentStatus])
+  @@index([providerEventId])
+}
+
+model NewsletterSubscriber {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  active         Boolean   @default(true)
+  unsubscribedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}

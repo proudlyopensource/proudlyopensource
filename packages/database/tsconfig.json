@@ -1,0 +1,12 @@
+{
+  "extends": "@proudlyopensource/typescript-config/base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["prisma.config.ts", "prisma/**/*.ts", "src/**/*.ts"],
+  "exclude": ["node_modules", "src/generated"]
+}

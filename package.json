@@ -1,0 +1,54 @@
+{
+  "name": "proudlyopensource",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A curated directory of open-source software, self-hosted tools, and open-source alternatives.",
+  "license": "MIT",
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:frontend": "turbo run dev --filter=@proudlyopensource/frontend",
+    "dev:api": "turbo run dev --filter=@proudlyopensource/api",
+    "dev:admin": "turbo run dev --filter=@proudlyopensource/admin",
+    "prebuild": "npm run db:generate",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "pretypecheck": "npm run db:generate",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "npm run db:generate --workspace=@proudlyopensource/database",
+    "db:validate": "npm run db:validate --workspace=@proudlyopensource/database",
+    "db:format": "npm run db:format --workspace=@proudlyopensource/database",
+    "db:push": "npm run db:push --workspace=@proudlyopensource/database",
+    "db:migrate": "npm run db:migrate --workspace=@proudlyopensource/database",
+    "db:migrate:deploy": "npm run db:migrate:deploy --workspace=@proudlyopensource/database",
+    "db:migrate:status": "npm run db:migrate:status --workspace=@proudlyopensource/database",
+    "db:reset": "npm run db:reset --workspace=@proudlyopensource/database",
+    "db:seed": "npm run db:seed --workspace=@proudlyopensource/database",
+    "db:studio": "npm run db:studio --workspace=@proudlyopensource/database",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.1.0",
+    "@commitlint/config-conventional": "^20.1.0",
+    "@proudlyopensource/eslint-config": "*",
+    "@proudlyopensource/typescript-config": "*",
+    "eslint": "^9.39.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.0",
+    "prettier": "^3.9.10",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "turbo": "^2.11.10",
+    "typescript": "^5.9.3"
+  }
+}

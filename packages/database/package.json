@@ -1,0 +1,47 @@
+{
+  "name": "@proudlyopensource/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./enums": "./src/generated/prisma/enums.ts",
+    "./models": "./src/generated/prisma/models.ts",
+    "./browser": "./src/generated/prisma/browser.ts"
+  },
+  "scripts": {
+    "postinstall": "prisma generate",
+    "build": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:format": "prisma format",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"prisma/**/*.ts\" \"prisma.config.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"prisma/**/*.ts\" \"prisma.config.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "dotenv": "^17.2.3",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@proudlyopensource/eslint-config": "*",
+    "@proudlyopensource/typescript-config": "*",
+    "@types/node": "^20",
+    "@types/pg": "^8",
+    "eslint": "^9.39.0",
+    "prisma": "7.10.1",
+    "tsx": "^4",
+    "typescript": "^5.9.3"
+  }
+}

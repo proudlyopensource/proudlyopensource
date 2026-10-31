@@ -1,0 +1,8 @@
+dist/
+node_modules/
+packages/database/src/generated/
+.next/
+.turbo/
+coverage/
+package-lock.json
+next-env.d.ts
